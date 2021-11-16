@@ -118,6 +118,8 @@ docker attach 容器id
 
 #从容器内拷贝文件到主机
 docker cp 容器id:容器内路径 目的主机路径
+#主机重启后，docker容器自动启动
+docker update 容器id --restart always
 ```
 
 # 作业nginx部署

@@ -221,3 +221,163 @@ georadius
 
 
 
+## 持久化
+
+### RDB——默认开启
+
+先将数据写入到缓存文件区，然后再写入文件，替换掉原来文件。缺点是最后一次持久化写入的数据可能丢失。
+
+RDB配置：？？？
+
+
+
+### AOF——默认不开启
+
+以日志的形式来记录每个写操作，将Redis执行过的写指令记录下来，只追加，redis启动之初会读取改文件重新构建数据。
+
+AOF同步频率：
+
+```sh
+#每次写入都同步，牺牲性能，保证数据完整性
+appendfsync always
+#每秒同步，可能丢失本秒操作数据
+appendfsync everysec
+#不主动同步，同步由操作系统决定
+appendfsync no
+```
+
+AOF文件过大的时候，会fork一条进程出来将文件重写，当文件满足触发条件时，开始重写。
+
+
+
+## 主从复制
+
+配置一主两从，从机只能读，
+
+```sh
+1.创建/myredis文件夹
+2.复制redis.conf配置到文件夹中
+3.创建三个配置文件redis_6379.conf,redis_6380.conf,redis_6381.conf，内容如下,其中6379是端口设置，三个文件的端口设置不一样
+    include /myredis/redis.conf
+    pidfile /var/run/redis_6379.conf
+    port 6379
+    dbfilename fump6379.rdb
+4.启动三个redis服务命令如下：
+	redis-server redis_6379.conf
+	redis-server redis_6380.conf
+	redis-server redis_6381.conf 	
+5.连接到对应的redis服务，查看主机的运行情况，使用info replication查看信息
+	redis-cli -p 6379
+	redis-cli -p 6380
+	redis-cli -p 6381
+6.在从机将从机添加到主机上，执行命令，由于三个都在本地所以用127.0.0.1，6379为主机端口
+	slaveof 127.0.0.1 6379
+```
+
+将从节点转化为主节点
+
+slaveof no one
+
+### 哨兵自动切换从节点为主节点
+
+```sh
+1.创建sentinel.conf的哨兵配置文件,添加如下内容，mymaster是自定义的哨兵监控的节点别名，最后的1是至少多少节点同意迁移的数量
+2.启动哨兵
+sentinel monitor mymaster 127.0.0.1 6379 1
+```
+
+
+
+启动哨兵redis-sentinel sentinel.conf
+
+根据replica-priority来选择新主节点，越小优先级越高
+
+选择条件依次为：
+
+1.优先级最高的先
+
+2.选择偏移量最大的
+
+3.选择runid最小的
+
+## redis集群
+
+创建redis6379.conf，内容如下，不同的节点对应的端口内容，文件名也要修改
+
+制作六个实例
+
+```sh
+include /myredis/redis.conf
+pidfile "/var/run/redis_6379.pid"
+port 6379
+dbfilename "dump6379.rdb"
+cluster-enabled yes
+cluster-config-file nodes-6379.conf
+cluster-node-timeout 15000
+```
+
+redis-server redis6379.conf启动后将六个节点合成一个集群，在/opt/redis/src目录下执行redis-cli命令
+
+```sh
+redis-cli --cluster create --cluster-replicas 1 ip1:port ip2:port ip3:port ip4:port ip5:port ip6:port
+```
+
+
+
+## redis问题——缓存穿透、缓存击穿、缓存雪崩
+
+#### 缓存穿透
+
+缓存穿透：redis缓存查询不到，命中率低，直接查询数据库
+
+一般是恶意攻击
+
+​	解决方案：
+
+			- 对空值缓存（不管数据存不存在都把空结果缓存，将过期时间设置的很短）
+			- 设置可访问的白名单
+			- 采用布隆过滤器
+			- 实时监控，当redis的命中率急速下降，运维介入
+
+#### 缓存击穿
+
+缓存击穿：
+
+​		现象：
+
+​				数据库访问压力瞬间增大
+
+​				redis中的key没有过期
+
+​				redis访问正常
+
+​		原因：
+
+​				redis中的某个key过期，而大量访问使用这个key
+
+​		解决方案：
+
+- 预先设置热门数据到redis中，加长数据的key时长
+- 实时监控热门数据，手动调整
+- 使用锁
+
+#### 缓存雪崩
+
+缓存雪崩：
+
+​		现象：
+
+​					数据库压力变大
+
+​					在极少的时间段，查询key的大量集中过期
+
+​		解决方案：
+
+​				构建多级缓存架构
+
+​				使用锁或队列
+
+​				设置过期标志更新缓存
+
+​				将缓存失效时间分散开
+
