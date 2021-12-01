@@ -347,3 +347,173 @@ yml配置文件配置
 
 ![image-20211106212549565](asset/image-20211106212549565.png)
 
+
+
+## Nacos
+
+### Nacos Discovery
+
+Nacos服务注册/发现
+
+参考：https://github.com/alibaba/spring-cloud-alibaba/wiki/Nacos-discovery-en
+
+> 1 pom文件，
+
+```xml
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+</dependency>
+```
+
+> 2 下载nocas服务器，启动服务器：https://nacos.io/zh-cn/docs/quick-start.html
+
+> 3 配置yml，nocas服务地址以及当前需要注册的服务名称gulimall-coupon
+
+```yml
+spring:
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+  application:
+    name: gulimall-coupon
+```
+
+> 4 启动类开启注解@EnableDiscoveryClient
+
+### Nacos Config
+
+首先在application.properties中配置两个变量，在controller中通过@Value注解进行访问，此时两个变量需要变化就需要重启服务配置。下面通过nacos来实现动态发布配置。
+
+```properties
+coupon.user.name=huangda
+coupon.user.age=20
+```
+
+> 1 引入依赖，这里如果不导入bootstrap依赖，他的bootstrap.properties文件配置不生效，由于版本问题，bootstrap.properties配置需要导入依赖bootstrap
+
+```xml
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-bootstrap</artifactId>
+</dependency>
+```
+
+> 2 在yml同级目录下创建一个bootstrap.properties，在里面配置如下内容
+
+```properties
+#当前服务名称
+spring.application.name=gulimall-coupon
+#nacos中心地址
+spring.cloud.nacos.config.server-addr=127.0.0.1:8848
+```
+
+> 3 配置中心中加一个服务名.properties的DataId，并将配置内容加入其中，如下
+
+![image-20211117193943757](asset/image-20211117193943757.png)
+
+![image-20211117193926563](asset/image-20211117193926563.png)
+
+> 4 在访问变量的controller类上添加@RefreshScope
+
+```java
+@RefreshScope
+@RestController
+@RequestMapping("coupon/coupon")
+public class CouponController {
+
+    @Value("${coupon.user.name}")
+    private String name;
+    @Value("${coupon.user.age}")
+    private Integer age;
+
+    @RequestMapping("/test")
+    public R test(){
+        return R.ok().put("name",name).put("age",age);
+    }
+}
+```
+
+#### Nacos Config Namespace and Group
+
+>  1 namespace 和group是对properties文件的一个分类。通过以下方式创建对应的group和namespace
+
+![image-20211118154225225](asset/image-20211118154225225.png)
+
+> 2 在bootstrap.properties中配置本服务的属性namespace  group，配置好后，会自动选择对应namespace和group的数据
+
+```properties
+spring.application.name=gulimall-coupon
+spring.cloud.nacos.config.server-addr=127.0.0.1:8848
+spring.cloud.nacos.config.file-extension=properties
+spring.cloud.nacos.config.namespace=e40f7a67-d1ac-45d1-bb74-db1f1eb10105
+spring.cloud.nacos.config.group=test
+```
+
+> 3  可以将不同的配置放到不同的配置文件，然后将配置信息类似上面一样放到配置中心注册，对应的DataId设置成对应的文件名称，最后在bootstrap.properties中配置如下信息，有多个的情况下在extension-configs[i]配置多个序号
+
+![image-20211118160615196](asset/image-20211118160615196.png)
+
+```properties
+spring.cloud.nacos.config.extension-configs[0].data-id=datasource.yml
+spring.cloud.nacos.config.extension-configs[0].group=dev
+spring.cloud.nacos.config.extension-configs[0].refresh=true
+```
+
+
+
+## OpenFeign
+
+该框架是从A服务调用B服务的访问，所以在A项目中导入包
+
+> 1 pom文件
+>
+> SpringCloud Feign在Hoxton.M2 RELEASED版本之后不再使用Ribbon而是使用spring-cloud-loadbalancer，所以不引入spring-cloud-loadbalancer会报错
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-openfeign</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-loadbalancer</artifactId>
+    <version>3.0.4</version>
+</dependency>
+```
+
+> 2 假设A访问B项目中的coupon/coupon/member/coupon，执行方法是getMemberCoupon()，那么需要在项目A中创建对应的CouponFeignService接口，添加B服务的服务名称（该名称为注册中心配置的name）
+
+```java
+@FeignClient("gulimall-coupon")
+public interface CouponFeignService {
+    @RequestMapping("coupon/coupon/member/coupon")
+    public R getMemberCoupon();
+}
+```
+
+> 3 A服务的controller添加访问，此时访问A服务的/coupon/list，里面会自动调用B服务中的getMemberCoupon来得到数据
+
+```java
+    @RequestMapping("/coupon/list")
+    public R couponList(){
+        MemberEntity member = new MemberEntity();
+        member.setHeader("huangda");
+        R memberCoupon = couponFeignService.getMemberCoupon();
+        return R.ok().put("member",member).put("coupon",memberCoupon.get("coupon"));
+    }
+```
+
+> 4 最后一步需要在A服务的启动类上添加注解@EnableFeignClients(basePackages = "com.atguigu.gulimall.member.feign")，其中basePackages填的是feign接口包名
+
+## GateWay
+
+> 1 开启服务注册发现，配置nacos的配置中心地址
+

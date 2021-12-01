@@ -381,3 +381,7 @@ redis-cli --cluster create --cluster-replicas 1 ip1:port ip2:port ip3:port ip4:p
 
 ​				将缓存失效时间分散开
 
+### 分布式锁
+
+
+
