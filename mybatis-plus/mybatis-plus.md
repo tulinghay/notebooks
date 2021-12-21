@@ -61,3 +61,18 @@ mybatis-plus:
       id-type: auto
 ```
 
+### 逻辑删除
+
+>  给逻辑删除的字段加上注解@TableLogic(value = "1",delval = "0")
+
+pom文件配置mybatis-plus逻辑删除的配置
+
+```
+mybatis-plus:
+  mapper-locations: classpath:/mapper/**/*.xml
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+```

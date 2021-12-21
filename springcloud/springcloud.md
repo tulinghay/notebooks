@@ -517,3 +517,165 @@ public interface CouponFeignService {
 
 > 1 开启服务注册发现，配置nacos的配置中心地址
 
+首先要开启注册服务，加入nacos注册中心，gateway依赖导入pom；
+
+启动类添加注解**@EnableDiscoveryClient**
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-gateway</artifactId>
+    <version>3.0.4</version>
+</dependency>
+```
+
+> 2 在application.properties中配置对应的路由
+
+```yml
+spring:
+  application:
+    name: gulimall-gateway
+  datasource:
+    username: root
+    password: root
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://59.78.194.135:3306/gulimall_sms
+  cloud:
+    gateway:
+      routes:
+        - id: baidu
+          uri: https://www.baidu.com
+          predicates:
+            - Query=url,baidu
+
+        - id: qq_route
+          uri: https://www.qq.com
+          predicates:
+            - Query=url,qq
+
+	
+        - id: admin_route
+          uri: lb://renren-fast
+          # 匹配所有api开头的uri
+          predicates:
+            - Path=/api/**
+          # 配置过滤器，将/api/...替换为 /renren-fast/...
+          filters:
+            - RewritePath=/api/(?<segment>.*),/renren-fast/$\{segment}
+```
+
+> 在gateway解决跨域问题，在gateway下添加一下文件，将其注入到bean容器中即可
+
+```java
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.reactive.CorsWebFilter;
+import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
+
+/**
+ * @Author William
+ * @Date 2021/12/9 12:18
+ * @Version 1.0
+ */
+@Configuration
+public class GulimallCrosConfiguration {
+    @Bean
+    public CorsWebFilter corsWebFilter(){
+
+            UrlBasedCorsConfigurationSource urlBasedCorsConfigurationSource = new UrlBasedCorsConfigurationSource();
+            CorsConfiguration corsConfiguration = new CorsConfiguration();
+            //配置跨域
+            /*允许服务端访问的客户端请求头*/
+            corsConfiguration.addAllowedHeader("*");
+            /*允许访问的方法名,GET POST等*/
+            corsConfiguration.addAllowedMethod("*");
+            /*允许访问的客户端域名*/
+            corsConfiguration.addAllowedOriginPattern("*");
+            /*是否允许请求带有验证信息*/
+            corsConfiguration.setAllowCredentials(true);
+            urlBasedCorsConfigurationSource.registerCorsConfiguration("/**", corsConfiguration);
+            return new CorsWebFilter(urlBasedCorsConfigurationSource);
+
+    }
+}
+
+```
+
+
+
+
+
+总结：
+
+配置注册中心、
+
+### Spring validation，
+
+可以实现在pojo成员变量上加注解来实现对字段数据的优化，比如@NotNull，@isMobile，@Length（32），在注解的message属性中可以设置返回的消息内容
+
+然后在post方法的参数中添加@Valid 激活，如果boby对象中的某个加了@NotNull的属性为空了，系统会返回400；
+
+如果想要自定义自己的异常来捕获400，可以在传入的参数后面加上BindResult ，用来获取系统的error信息
+
+```java
+@RequestMapping()
+public void get(@Valid @RequestBody BobyEntity boby,BindResult result){
+    if(result.hasErrors){
+        result.getFieldErrors().forEach((item)->{
+            String message=item.getDefaultMessage();
+            String field=item.getField();
+            map.put(field,message);
+        });
+        return R.error(400,"提交的数据不合法").put("data",map);
+    }
+}
+```
+
+### 分组校验
+
+创建接口
+
+```java
+public interface UpdateGroup{
+    
+}
+public interface AddGroup{
+    
+}
+```
+
+在实体类字段中做校验，并设置对应异常所属的异常接口分组
+
+```java
+/*	 * 品牌logo地址
+	 */
+	@NotBlank(groups = {AddGroup.class})
+	@URL(message = "logo必须是一个合法的url地址",groups=	{AddGroup.class,UpdateGroup.class})
+	private String logo;
+```
+
+在方法调用时，使用@Validated注解绑定
+
+```java
+    @RequestMapping("/save")
+    public R save(@Validated({AddGroup.class}) @RequestBody BrandEntity brand
+    ){
+        brandService.save(brand);
+        return R.ok();
+    }
+```
+
+
+
+### 自定义校验注解
+
+
+
+
+
+### 字段为空，返回前端的Json数据直接不包含该字段
+
+添加注解：@JsonInclude(JsonInclude.NON_EMPTY)
+
+该注解表示如果字段数据为空，则返回的json中不包含该字段信息
