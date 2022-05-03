@@ -40,7 +40,7 @@ rm -rf /var/lib/docker
 ```shell
 #镜像显示
 docker images
-docker images -a	#列出所哟肚饿镜像 
+docker images -a	#列出所有镜像 
 docker images -q	#只显示出镜像的id
 #镜像搜寻
 docker search mysql #搜索所有的镜像
